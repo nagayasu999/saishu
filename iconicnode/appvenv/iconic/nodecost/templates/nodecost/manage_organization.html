@@ -1,0 +1,111 @@
+{% extends "base.html" %}
+{% load static %}
+{% load custom_filters %}
+
+{% block title %}Manage Organization{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2 class="text-center mb-4">Organization Structure</h2>
+
+    <!-- ノードごとの通信コスト -->
+    <div class="mb-4">
+        <h4>Node Communication Costs</h4>
+        <div class="list-group" style="max-height: 300px; overflow-y: auto;">
+            {% for node in nodes %}
+            <div class="list-group-item">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div style="width: 60%;">
+                        <strong>{{ node.title }}</strong>
+                    </div>
+                    <div style="width: 20%;">
+                        <span><strong>Cost:</strong> {{ individual_costs|get_item:node.id }}</span>
+                    </div>
+                    <button class="btn btn-sm btn-primary" style="width: 20%;" onclick="toggleBreakdown({{ node.id }})">
+                        View Breakdown
+                    </button>
+                </div>
+                <div id="breakdown-{{ node.id }}" class="mt-3" style="display: none;">
+                    <ul class="list-unstyled">
+                        <li>
+                            <strong>Total Cost:</strong> {{ detailed_costs|get_item:node.id|get_item:"total_cost" }}
+                        </li>
+                        <li><strong>Breakdown:</strong></li>
+                        {% for breakdown in detailed_costs|get_item:node.id|get_item:"breakdown" %}
+                        <li>
+                            <div class="d-flex">
+                                <div style="width: 20%;"><strong>To:</strong> {{ breakdown.target_node }}</div>
+                                <div style="width: 20%;"><strong>Cost:</strong> {{ breakdown.cost }}</div>
+                                <div style="flex: 1;"><strong>Path:</strong> {{ breakdown.path|join:" → " }}</div>
+                            </div>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="mt-3">
+            <strong>Total Communication Cost:</strong> {{ total_cost }}
+        </div>
+    </div>
+
+    <!-- 組織構造図 -->
+    <div id="organization-container" style="width:100%; height:800px; border:1px solid lightgray;"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gojs/2.1.52/go.js"></script>
+<script>
+    function toggleBreakdown(nodeId) {
+        const breakdownElement = document.getElementById(`breakdown-${nodeId}`);
+        if (breakdownElement.style.display === "none") {
+            breakdownElement.style.display = "block";
+        } else {
+            breakdownElement.style.display = "none";
+        }
+    }
+
+    function init() {
+        const $ = go.GraphObject.make;
+
+        const myDiagram = $(go.Diagram, "organization-container", {
+            "undoManager.isEnabled": true,
+            layout: $(go.LayeredDigraphLayout, { direction: 90, layerSpacing: 60 })
+        });
+
+        myDiagram.nodeTemplate =
+            $(go.Node, "Vertical",
+                $(go.Picture, {
+                    width: 50,
+                    height: 50,
+                    source: "{% static 'nodecost/icons/person_icon.png' %}"
+                }),
+                $(go.TextBlock, { font: "bold 12pt sans-serif" }, new go.Binding("text", "title")),
+                $(go.TextBlock, { font: "10pt sans-serif" }, new go.Binding("text", "weight", w => "Wt: " + w))
+            );
+
+        const nodeDataArray = [
+            {% for node in nodes %}
+            {
+                key: {{ node.id }},
+                title: "{{ node.title }}",
+                weight: {{ node.weight }},
+                {% if node.parent_id is not None %}
+                parent: {{ node.parent_id }}
+                {% endif %}
+            }{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        ];
+
+        myDiagram.model = new go.GraphLinksModel(nodeDataArray, []);
+
+        nodeDataArray.forEach(node => {
+            if (node.parent !== undefined) {
+                myDiagram.model.addLinkData({ from: node.parent, to: node.key });
+            }
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+</script>
+{% endblock %}
